@@ -26,26 +26,26 @@ import com.mapbox.maps.plugin.annotation.generated.PointAnnotationManager
 import com.mapbox.maps.plugin.annotation.generated.PointAnnotationOptions
 import com.mapbox.maps.plugin.annotation.generated.createPointAnnotationManager
 import com.mapbox.maps.plugin.locationcomponent.location
+import android.content.Intent
+import android.provider.MediaStore
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var mapView: MapView
     private lateinit var mapboxMap: MapboxMap
     private lateinit var pointAnnotationManager: PointAnnotationManager
-    private lateinit var databaseHelper: WaypointDatabaseHelper
     private var waypointCounter = 1
 
-    // Variables to store the latitude and longitude of the created waypoints
     private val waypointList = mutableListOf<Pair<Double, Double>>()
 
     companion object {
         private const val PERMISSION_REQUEST_CODE = 1001
+        private const val REQUEST_CODE_TAKE_PHOTO = 101
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Initialize MapInitOptions with the access token
         val mapInitOptions = MapInitOptions(
             context = this,
             resourceOptions = ResourceOptions.Builder()
@@ -53,63 +53,65 @@ class MainActivity : AppCompatActivity() {
                 .build()
         )
 
-        // Programmatically initialize MapView
         mapView = MapView(this, mapInitOptions)
         setContentView(mapView)
 
-        // Initialize SQLite database
-        databaseHelper = WaypointDatabaseHelper(this)
+        val cameraButton = Button(this).apply {
+            text = "Take Photo"
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                marginStart = 16
+                topMargin = 240 // position below the clear button
+            }
+        }
 
-        // Add "Load" button
-        val loadButton = Button(this).apply {
-            text = "Load Waypoints"
-            setOnClickListener { loadWaypoints() }
+        cameraButton.setOnClickListener {
+            takePhoto()
         }
-        val buttonLayoutParams = FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT
-        ).apply {
-            marginStart = 16
-            topMargin = 16
-        }
-        addContentView(loadButton, buttonLayoutParams)
 
-        // Add "Save" button
-        val saveButton = Button(this).apply {
-            text = "Save Waypoint"
-            setOnClickListener { saveWaypoint() }
-        }
-        val saveButtonLayoutParams = FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT
-        ).apply {
-            marginStart = 16
-            topMargin = 80 // position below the load button
-        }
-        addContentView(saveButton, saveButtonLayoutParams)
+        mapView.addView(cameraButton)
 
-        // Add "Clear" button
-        val clearButton = Button(this).apply {
-            text = "Clear Waypoints"
-            setOnClickListener { clearWaypoints() }
-        }
-        val clearButtonLayoutParams = FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT
-        ).apply {
-            marginStart = 16
-            topMargin = 160 // position below the save button
-        }
-        addContentView(clearButton, clearButtonLayoutParams)
-
-        // Get MapboxMap from the MapView
-        mapboxMap = mapView.getMapboxMap()
-
-        // Check and request location permissions
         if (hasLocationPermission()) {
             initializeMap()
         } else {
             requestLocationPermission()
+        }
+    }
+
+    private fun hasCameraPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun requestCameraPermission() {
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(Manifest.permission.CAMERA),
+            PERMISSION_REQUEST_CODE
+        )
+    }
+
+    private fun takePhoto() {
+        if (hasCameraPermission()) {
+            val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
+            startActivityForResult(intent, REQUEST_CODE_TAKE_PHOTO)
+        } else {
+            requestCameraPermission()
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQUEST_CODE_TAKE_PHOTO && resultCode == RESULT_OK) {
+            val imageUri = data?.data
+            imageUri?.let {
+                // You can display or save the photo
+                Toast.makeText(this, "Photo taken successfully", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -129,6 +131,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun initializeMap() {
+        mapboxMap = mapView.getMapboxMap() // Initialize mapboxMap here
+
         mapboxMap.loadStyleUri(Style.MAPBOX_STREETS) { style ->
             // Enable the LocationComponent for GPS tracking
             val locationComponentPlugin = mapView.location
@@ -168,78 +172,19 @@ class MainActivity : AppCompatActivity() {
         val pointAnnotationOptions = PointAnnotationOptions()
             .withPoint(point)
             .withIconSize(5.0)
-            .withIconImage("marker-15") // Use default marker
-            .withTextField(waypointCounter.toString()) // Add waypoint number as text
-            .withTextSize(14.0) // Adjust text size
-            .withTextColor("black") // Text color
-            .withTextAnchor(TextAnchor.TOP) // Use TextAnchor enum for positioning text above the marker
+            .withIconImage("marker-15")
+            .withTextField(waypointCounter.toString())
+            .withTextSize(14.0)
+            .withTextColor("black")
+            .withTextAnchor(TextAnchor.TOP)
 
-        // Add the point annotation to the manager
         pointAnnotationManager.create(pointAnnotationOptions)
 
-        // Add the point's latitude and longitude to the list
         waypointList.add(Pair(point.latitude(), point.longitude()))
 
-        Toast.makeText(
-            this,
-            "Waypoint $waypointCounter added at: ${point.latitude()}, ${point.longitude()}",
-            Toast.LENGTH_SHORT
-        ).show()
+        Toast.makeText(this, "Waypoint $waypointCounter added at: ${point.latitude()}, ${point.longitude()}", Toast.LENGTH_SHORT).show()
 
-        // Increment counter for the next waypoint
         waypointCounter++
-    }
-
-    private fun saveWaypoint() {
-        if (waypointList.isNotEmpty()) {
-            // Save all waypoints from the list to the database
-            for ((latitude, longitude) in waypointList) {
-                val point = Point.fromLngLat(longitude, latitude)
-                saveWaypointToDatabase(point, waypointCounter.toString())
-                waypointCounter++ // Increment for next waypoint
-            }
-            // Clear the waypoint list after saving
-            waypointList.clear()
-
-            Toast.makeText(this, "Waypoints saved!", Toast.LENGTH_SHORT).show()
-        } else {
-            Toast.makeText(this, "No waypoints to save", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun saveWaypointToDatabase(point: Point, label: String) {
-        val db = databaseHelper.writableDatabase
-        db.execSQL(
-            "INSERT INTO waypoints (latitude, longitude, label) VALUES (?, ?, ?)",
-            arrayOf(point.latitude(), point.longitude(), label)
-        )
-    }
-
-    private fun loadWaypoints() {
-        val db = databaseHelper.readableDatabase
-        val cursor: Cursor = db.rawQuery("SELECT * FROM waypoints", null)
-        if (cursor.moveToFirst()) {
-            do {
-                val latitude = cursor.getDouble(cursor.getColumnIndexOrThrow("latitude"))
-                val longitude = cursor.getDouble(cursor.getColumnIndexOrThrow("longitude"))
-                val point = Point.fromLngLat(longitude, latitude)
-                createWaypoint(point)  // Add waypoint to the map
-            } while (cursor.moveToNext())
-        }
-        cursor.close()
-        Toast.makeText(this, "Waypoints loaded!", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun clearWaypoints() {
-        // Clear all point annotations from the map
-        pointAnnotationManager.deleteAll()
-
-        // Clear the waypoint list
-        waypointList.clear()
-
-        waypointCounter = 1
-
-        Toast.makeText(this, "All waypoints cleared", Toast.LENGTH_SHORT).show()
     }
 
     override fun onRequestPermissionsResult(
@@ -266,21 +211,5 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         mapView.onDestroy()
-        databaseHelper.close()
-    }
-
-    // SQLite Database Helper
-    class WaypointDatabaseHelper(context: MainActivity) :
-        SQLiteOpenHelper(context, "waypoints.db", null, 1) {
-
-        override fun onCreate(db: SQLiteDatabase) {
-            db.execSQL("CREATE TABLE waypoints (id INTEGER PRIMARY KEY AUTOINCREMENT, latitude REAL, longitude REAL, label TEXT)")
-        }
-
-        override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-            db.execSQL("DROP TABLE IF EXISTS waypoints")
-            onCreate(db)
-        }
     }
 }
-
