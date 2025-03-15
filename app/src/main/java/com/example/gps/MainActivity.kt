@@ -6,6 +6,7 @@ import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import android.os.Bundle
+import android.util.Log
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.Toast
@@ -26,6 +27,8 @@ import com.mapbox.maps.plugin.annotation.generated.PointAnnotationManager
 import com.mapbox.maps.plugin.annotation.generated.PointAnnotationOptions
 import com.mapbox.maps.plugin.annotation.generated.createPointAnnotationManager
 import com.mapbox.maps.plugin.locationcomponent.location
+import com.google.firebase.firestore.FirebaseFirestore
+
 
 class MainActivity : AppCompatActivity() {
 
@@ -37,6 +40,9 @@ class MainActivity : AppCompatActivity() {
 
     // Variables to store the latitude and longitude of the created waypoints
     private val waypointList = mutableListOf<Pair<Double, Double>>()
+
+    //firestore
+    private val firestore = FirebaseFirestore.getInstance()
 
     companion object {
         private const val PERMISSION_REQUEST_CODE = 1001
@@ -63,7 +69,7 @@ class MainActivity : AppCompatActivity() {
         // Add "Load" button
         val loadButton = Button(this).apply {
             text = "Load Waypoints"
-            setOnClickListener { loadWaypoints() }
+            setOnClickListener { loadWaypointsFromFirestore() }
         }
         val buttonLayoutParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -195,7 +201,7 @@ class MainActivity : AppCompatActivity() {
             // Save all waypoints from the list to the database
             for ((latitude, longitude) in waypointList) {
                 val point = Point.fromLngLat(longitude, latitude)
-                saveWaypointToDatabase(point, waypointCounter.toString())
+                saveWaypointToFirestore(point, waypointCounter.toString())
                 waypointCounter++ // Increment for next waypoint
             }
             // Clear the waypoint list after saving
@@ -207,40 +213,59 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun saveWaypointToDatabase(point: Point, label: String) {
-        val db = databaseHelper.writableDatabase
-        db.execSQL(
-            "INSERT INTO waypoints (latitude, longitude, label) VALUES (?, ?, ?)",
-            arrayOf(point.latitude(), point.longitude(), label)
+    private fun saveWaypointToFirestore(point: Point, label: String) {
+        val waypoint = hashMapOf(
+            "latitude" to point.latitude(),
+            "longitude" to point.longitude(),
+            "label" to label
         )
+
+        firestore.collection("waypoints")
+            .add(waypoint)
+            .addOnSuccessListener {
+                Toast.makeText(this, "Waypoint salvo no Firestore!", Toast.LENGTH_SHORT).show()
+            }
+            .addOnFailureListener { e ->
+                Toast.makeText(this, "Erro ao salvar no Firestore: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
     }
 
-    private fun loadWaypoints() {
-        val db = databaseHelper.readableDatabase
-        val cursor: Cursor = db.rawQuery("SELECT * FROM waypoints", null)
-        if (cursor.moveToFirst()) {
-            do {
-                val latitude = cursor.getDouble(cursor.getColumnIndexOrThrow("latitude"))
-                val longitude = cursor.getDouble(cursor.getColumnIndexOrThrow("longitude"))
-                val point = Point.fromLngLat(longitude, latitude)
-                createWaypoint(point)  // Add waypoint to the map
-            } while (cursor.moveToNext())
-        }
-        cursor.close()
-        Toast.makeText(this, "Waypoints loaded!", Toast.LENGTH_SHORT).show()
+
+    private fun loadWaypointsFromFirestore() {
+        firestore.collection("waypoints")
+            .get()
+            .addOnSuccessListener { documents ->
+                for (document in documents) {
+                    val latitude = document.getDouble("latitude") ?: 0.0
+                    val longitude = document.getDouble("longitude") ?: 0.0
+                    val point = Point.fromLngLat(longitude, latitude)
+                    createWaypoint(point) // Adiciona ao mapa
+                }
+                Toast.makeText(this, "Waypoints carregados do Firestore!", Toast.LENGTH_SHORT).show()
+            }
+            .addOnFailureListener { e ->
+                Toast.makeText(this, "Erro ao carregar do Firestore: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
     }
+
 
     private fun clearWaypoints() {
-        // Clear all point annotations from the map
         pointAnnotationManager.deleteAll()
-
-        // Clear the waypoint list
         waypointList.clear()
-
         waypointCounter = 1
 
-        Toast.makeText(this, "All waypoints cleared", Toast.LENGTH_SHORT).show()
+        // Remover do Firestore
+        firestore.collection("waypoints")
+            .get()
+            .addOnSuccessListener { documents ->
+                for (document in documents) {
+                    firestore.collection("waypoints").document(document.id).delete()
+                }
+            }
+
+        Toast.makeText(this, "Waypoints apagados!", Toast.LENGTH_SHORT).show()
     }
+
 
     override fun onRequestPermissionsResult(
         requestCode: Int,
