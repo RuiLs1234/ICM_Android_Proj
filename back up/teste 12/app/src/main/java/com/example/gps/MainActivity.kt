@@ -13,8 +13,6 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.Toast
-import androidx.activity.result.ActivityResultLauncher
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -44,10 +42,9 @@ class MainActivity : AppCompatActivity() {
     private var waypointCounter = 1
     private val waypointList = mutableListOf<Pair<Double, Double>>()
 
-    private lateinit var cameraLauncher: ActivityResultLauncher<Intent>
-
     companion object {
         private const val PERMISSION_REQUEST_CODE = 1001
+        private const val CAMERA_REQUEST_CODE = 1002
     }
 
     private var listenerAdded = false // Flag to ensure listener is added only once
@@ -55,21 +52,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // Register launcher for camera intent using new Activity Result API
-        cameraLauncher = registerForActivityResult(
-            ActivityResultContracts.StartActivityForResult()
-        ) { result ->
-            if (result.resultCode == Activity.RESULT_OK) {
-                val data = result.data
-                val imageBitmap = data?.extras?.get("data") as? Bitmap
-                imageBitmap?.let {
-                    imageView.setImageBitmap(it)
-                }
-                isPhotoTaken = true
-                createWaypointForPhoto()
-            }
-        }
 
         // Initialize MapView with MapInitOptions
         val mapInitOptions = MapInitOptions(
@@ -145,13 +127,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun navigateToBrowseMemories() {
         // Navigate to BrowseMemoriesActivity (ensure this activity exists)
-       // val intent = Intent(this, BrowseMemoriesActivity::class.java)
+        //val intent = Intent(this, BrowseMemoriesActivity::class.java)
         startActivity(intent)
     }
 
     private fun navigateToLinkMemories() {
         // Navigate to LinkMemoriesActivity (ensure this activity exists)
-        //val intent = Intent(this, LinkMemoriesActivity::class.java)
+       // val intent = Intent(this, LinkMemoriesActivity::class.java)
         startActivity(intent)
     }
 
@@ -181,7 +163,7 @@ class MainActivity : AppCompatActivity() {
         ActivityCompat.requestPermissions(
             this,
             arrayOf(Manifest.permission.CAMERA),
-            PERMISSION_REQUEST_CODE
+            CAMERA_REQUEST_CODE
         )
     }
 
@@ -214,9 +196,21 @@ class MainActivity : AppCompatActivity() {
         }
         val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
         if (intent.resolveActivity(packageManager) != null) {
-            cameraLauncher.launch(intent)
+            startActivityForResult(intent, CAMERA_REQUEST_CODE)
         } else {
             Toast.makeText(this, "Camera not available", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == CAMERA_REQUEST_CODE && resultCode == Activity.RESULT_OK) {
+            val imageBitmap = data?.extras?.get("data") as? Bitmap
+            imageBitmap?.let {
+                imageView.setImageBitmap(it)
+            }
+            isPhotoTaken = true
+            createWaypointForPhoto()
         }
     }
 
@@ -271,12 +265,10 @@ class MainActivity : AppCompatActivity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        // For both location and camera, you can handle the permissions here.
-        if (requestCode == PERMISSION_REQUEST_CODE && grantResults.isNotEmpty()) {
-            if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                // If camera permission granted, try to take photo
-                takePhoto()
-            }
+        if (requestCode == CAMERA_REQUEST_CODE && grantResults.isNotEmpty() &&
+            grantResults[0] == PackageManager.PERMISSION_GRANTED
+        ) {
+            takePhoto()
         }
     }
 }
