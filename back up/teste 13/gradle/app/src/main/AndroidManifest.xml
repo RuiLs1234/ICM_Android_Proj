@@ -1,23 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    package="com.example.gps">
-
+    xmlns:tools="http://schemas.android.com/tools">
     <meta-data
         android:name="com.mapbox.maps.token"
-        android:value="sk.eyJ1IjoicnVpdWEiLCJhIjoiY200bXM4czU5MDBwZDJrcjJsZW9qNzVjOCJ9.TlDHWxGJe7rdI03udVud3w" />
-
+        android:value="pk.eyJ1IjoicnVpdWEiLCJhIjoiY200anplNTNvMDM0ejJqc2htOXZjbTB3NCJ9.4VYtbLOO9eEVlbRMPb1GVg" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.READ_PHONE_STATE" tools:ignore="ProtectedPermissions" />
-
-    <uses-feature android:name="android.hardware.camera" android:required="false" />
-
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -28,34 +19,17 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.AppCompat.Light"
         tools:targetApi="31">
-
-        <!-- FileProvider without file paths XML -->
-        <provider
-            android:name="androidx.core.content.FileProvider"
-            android:authorities="com.example.gps.fileprovider"
-            android:exported="false"
-            android:grantUriPermissions="true" />
-
-        <activity
-            android:name=".AuthActivity"
-            android:exported="true"
-            android:theme="@style/Theme.Gps">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
-
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:theme="@style/Theme.Gps" />
+            android:label="@string/app_name"
+            android:theme="@style/Theme.Gps">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
 
-        <activity
-            android:name=".CreateMemoryActivity"
-            android:exported="true"
-            android:theme="@style/Theme.Gps" />
-
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
     </application>
 
 </manifest>
