@@ -37,15 +37,14 @@ class BrowseMemoriesActivity : AppCompatActivity() {
     private lateinit var listView: ListView
     private lateinit var mapView: MapView
     private lateinit var mapContainer: FrameLayout
-    // Updated overlay: a horizontal LinearLayout with an ImageView and a TextView for message.
-    private lateinit var messageOverlay: LinearLayout
+    private lateinit var messageOverlay: TextView
     private lateinit var mapboxMap: MapboxMap
     private var pointAnnotationManager: PointAnnotationManager? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Create a root layout dividing screen vertically.
+        // Root layout dividing screen vertically.
         val rootLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
@@ -77,43 +76,24 @@ class BrowseMemoriesActivity : AppCompatActivity() {
         mapView = MapView(this, mapInitOptions)
         mapContainer.addView(mapView)
 
-        // Create the overlay layout.
-        // It always displays an ImageView for the photo and a TextView for the message.
-        messageOverlay = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
+        // Create the overlay TextView (initially gone).
+        messageOverlay = TextView(this).apply {
             setBackgroundColor(0xAA000000.toInt())  // Semi-transparent black.
+            setTextColor(0xFFFFFFFF.toInt())        // White text.
+            textSize = 16f
             setPadding(16, 16, 16, 16)
-            visibility = View.GONE  // Initially hidden.
-            // Position overlay at the bottom-center of the map.
-            layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
+            visibility = View.GONE
+            // Position it at the bottom of the map.
+            val params = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
             )
+            layoutParams = params
         }
-
-        // ImageView: always present.
-        val overlayImageView = ImageView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(250, 250).apply {
-                rightMargin = 16
-            }
-            scaleType = ImageView.ScaleType.CENTER_CROP
-        }
-        messageOverlay.addView(overlayImageView)
-
-        // TextView for the optional message.
-        val overlayMessageTextView = TextView(this).apply {
-            textSize = 18f
-            setTextColor(0xFFFFFFFF.toInt())
-            // If no message, this text will simply be empty.
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-        }
-        messageOverlay.addView(overlayMessageTextView)
-
         mapContainer.addView(messageOverlay)
+
+        // Add map container to root layout.
         rootLayout.addView(mapContainer)
 
         // Set the composed layout as the content view.
@@ -128,7 +108,7 @@ class BrowseMemoriesActivity : AppCompatActivity() {
         val adapter = MemoryAdapter(this, memoryList)
         listView.adapter = adapter
 
-        // When a memory is clicked, update the MapView.
+        // When a memory is clicked, update the map.
         listView.setOnItemClickListener { _, _, position, _ ->
             val memory = memoryList[position]
             val point = Point.fromLngLat(memory.longitude, memory.latitude)
@@ -141,30 +121,24 @@ class BrowseMemoriesActivity : AppCompatActivity() {
             )
             // Remove previous markers.
             pointAnnotationManager?.deleteAll()
-            // Add a marker with the memory's (optional) message.
+            // Add a marker with the memory's message (if any).
             val markerOptions = PointAnnotationOptions()
                 .withPoint(point)
-                .withIconImage("marker-15")
+                .withIconImage("marker-15") // Ensure this asset exists.
                 .withTextField(memory.message ?: "")
                 .withTextAnchor(TextAnchor.TOP)
                 .withIconSize(1.5)
             pointAnnotationManager?.create(markerOptions)
-
-            // Update overlay:
-            // Always show the photo.
-            val bitmap = BitmapFactory.decodeByteArray(memory.image, 0, memory.image.size)
-            overlayImageView.setImageBitmap(bitmap)
-            // If there is a nonblank message, show it; otherwise, set text to empty.
+            // Show overlay only if there is a nonempty message.
             if (!memory.message.isNullOrBlank()) {
-                overlayMessageTextView.text = memory.message
+                messageOverlay.text = memory.message
+                messageOverlay.visibility = View.VISIBLE
             } else {
-                overlayMessageTextView.text = ""
+                messageOverlay.visibility = View.GONE
             }
-            // Make overlay visible.
-            messageOverlay.visibility = View.VISIBLE
         }
 
-        // Initialize Mapbox map and create the annotation manager.
+        // Initialize Mapbox map and create annotation manager.
         mapboxMap = mapView.getMapboxMap()
         mapboxMap.loadStyleUri(Style.MAPBOX_STREETS) {
             pointAnnotationManager = mapView.annotations.createPointAnnotationManager()
@@ -217,7 +191,7 @@ class BrowseMemoriesActivity : AppCompatActivity() {
             }
             layout.addView(imageView)
 
-            // Create a vertical LinearLayout for text information (optional message only).
+            // Create a vertical LinearLayout for text information.
             val textLayout = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(16, 0, 0, 0)
@@ -230,7 +204,12 @@ class BrowseMemoriesActivity : AppCompatActivity() {
                 text = memory.message ?: "(No message)"
                 textSize = 16f
             }
+            val coordsTextView = TextView(context).apply {
+                text = "Lat: ${memory.latitude}, Lon: ${memory.longitude}"
+                textSize = 14f
+            }
             textLayout.addView(messageTextView)
+            textLayout.addView(coordsTextView)
 
             layout.addView(textLayout)
             return layout
