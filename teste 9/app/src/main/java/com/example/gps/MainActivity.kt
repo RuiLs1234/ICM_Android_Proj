@@ -44,6 +44,8 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+
+
         // Initialize MapView with MapInitOptions
         val mapInitOptions = MapInitOptions(
             context = this,

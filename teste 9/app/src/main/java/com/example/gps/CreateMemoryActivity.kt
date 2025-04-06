@@ -16,9 +16,15 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.google.firebase.firestore.FirebaseFirestore
 import com.mapbox.maps.*
 import com.mapbox.maps.plugin.locationcomponent.location
+import okhttp3.*
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 
 class CreateMemoryActivity : AppCompatActivity() {
 
@@ -28,9 +34,13 @@ class CreateMemoryActivity : AppCompatActivity() {
     private lateinit var takeSelfieButton: Button
     private lateinit var saveMemoryButton: Button
     private lateinit var selfieImageView: ImageView
-    private lateinit var messageEditText: EditText    // Campo para mensagem do usuário
+    private lateinit var messageEditText: EditText
     private lateinit var cameraLauncher: ActivityResultLauncher<Intent>
-    private lateinit var memoryDbHelper: MemoryDatabaseHelper
+
+    // Firebase e Imgur
+    private val db = FirebaseFirestore.getInstance()
+    private val IMGUR_CLIENT_ID = "89528b049eb7c05"
+    private val client = OkHttpClient()
 
     private var currentPhoto: Bitmap? = null
     private var currentLatitude: Double? = null
@@ -43,8 +53,6 @@ class CreateMemoryActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        memoryDbHelper = MemoryDatabaseHelper(this)
 
         // Cria o layout raiz
         val rootLayout = FrameLayout(this)
@@ -105,14 +113,21 @@ class CreateMemoryActivity : AppCompatActivity() {
         // Botão para salvar a memória
         saveMemoryButton = Button(this).apply {
             text = "Save Memory"
-            setOnClickListener { saveMemory() }
+            setOnClickListener {
+                if (validateData()) {
+                    uploadPhotoToImgur()
+                } else {
+                    Toast.makeText(this@CreateMemoryActivity,
+                        "Preencha todos os dados", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
         overlayLayout.addView(saveMemoryButton)
 
         rootLayout.addView(overlayLayout, overlayParams)
         setContentView(rootLayout)
 
-        // Regista o launcher da câmera usando a API ActivityResult
+        // Registra o launcher da câmera
         cameraLauncher = registerForActivityResult(
             ActivityResultContracts.StartActivityForResult()
         ) { result ->
@@ -130,7 +145,7 @@ class CreateMemoryActivity : AppCompatActivity() {
             }
         }
 
-        // Verifica e solicita as permissões de localização e câmera se necessário
+        // Verifica permissões
         if (hasLocationPermission()) {
             initializeMap()
         } else {
@@ -141,12 +156,97 @@ class CreateMemoryActivity : AppCompatActivity() {
         }
     }
 
-    // Verifica se a permissão de localização foi concedida
+    private fun validateData(): Boolean {
+        return currentPhoto != null &&
+                currentLatitude != null &&
+                currentLongitude != null &&
+                messageEditText.text.isNotEmpty()
+    }
+
+    private fun uploadPhotoToImgur() {
+        val stream = ByteArrayOutputStream()
+        currentPhoto?.compress(Bitmap.CompressFormat.JPEG, 100, stream)
+        val imageBytes = stream.toByteArray()
+
+        val requestBody = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart(
+                "image",
+                "memory.jpg",
+                imageBytes.toRequestBody("image/jpeg".toMediaType())
+            )
+            .build()
+
+        val request = Request.Builder()
+            .url("https://api.imgur.com/3/image")
+            .post(requestBody)
+            .addHeader("Authorization", "Client-ID $IMGUR_CLIENT_ID")
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                runOnUiThread {
+                    Toast.makeText(this@CreateMemoryActivity,
+                        "Falha no upload: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                response.use {
+                    if (!response.isSuccessful) {
+                        runOnUiThread {
+                            Toast.makeText(this@CreateMemoryActivity,
+                                "Erro no upload", Toast.LENGTH_SHORT).show()
+                        }
+                        return
+                    }
+
+                    val responseData = response.body?.string()
+                    try {
+                        val json = JSONObject(responseData ?: "")
+                        val imgurLink = json.getJSONObject("data").getString("link")
+                        saveMemoryToFirestore(imgurLink)
+                    } catch (e: Exception) {
+                        runOnUiThread {
+                            Toast.makeText(this@CreateMemoryActivity,
+                                "Erro ao processar resposta", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            }
+        })
+    }
+
+    private fun saveMemoryToFirestore(imgurLink: String) {
+        val memoryData = hashMapOf(
+            "imgurLink" to imgurLink,
+            "latitude" to currentLatitude,
+            "longitude" to currentLongitude,
+            "message" to messageEditText.text.toString(),
+            "timestamp" to System.currentTimeMillis()
+        )
+
+        db.collection("memories")
+            .add(memoryData)
+            .addOnSuccessListener {
+                runOnUiThread {
+                    Toast.makeText(this@CreateMemoryActivity,
+                        "Memória salva com sucesso!", Toast.LENGTH_SHORT).show()
+                    finish()
+                }
+            }
+            .addOnFailureListener { e ->
+                runOnUiThread {
+                    Toast.makeText(this@CreateMemoryActivity,
+                        "Erro ao salvar: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+    }
+
     private fun hasLocationPermission() = ContextCompat.checkSelfPermission(
         this, Manifest.permission.ACCESS_FINE_LOCATION
     ) == PackageManager.PERMISSION_GRANTED
 
-    // Solicita a permissão de localização
     private fun requestLocationPermission() {
         ActivityCompat.requestPermissions(
             this,
@@ -155,12 +255,10 @@ class CreateMemoryActivity : AppCompatActivity() {
         )
     }
 
-    // Verifica se a permissão de câmera foi concedida
     private fun hasCameraPermission() = ContextCompat.checkSelfPermission(
         this, Manifest.permission.CAMERA
     ) == PackageManager.PERMISSION_GRANTED
 
-    // Solicita a permissão de câmera
     private fun requestCameraPermission() {
         ActivityCompat.requestPermissions(
             this,
@@ -169,7 +267,6 @@ class CreateMemoryActivity : AppCompatActivity() {
         )
     }
 
-    // Inicializa o MapView e atualiza as informações de GPS
     private fun initializeMap() {
         mapboxMap = mapView.getMapboxMap()
         mapboxMap.loadStyleUri(Style.MAPBOX_STREETS) {
@@ -192,7 +289,6 @@ class CreateMemoryActivity : AppCompatActivity() {
         }
     }
 
-    // Abre a câmera para capturar a foto
     private fun openCamera() {
         val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
         if (intent.resolveActivity(packageManager) != null) {
@@ -202,38 +298,6 @@ class CreateMemoryActivity : AppCompatActivity() {
         }
     }
 
-    // Salva a memória (foto, localização e mensagem) no banco de dados e retorna para a MainActivity
-    private fun saveMemory() {
-        if (currentLatitude != null && currentLongitude != null && currentPhoto != null) {
-            val stream = ByteArrayOutputStream()
-            currentPhoto?.compress(Bitmap.CompressFormat.PNG, 100, stream)
-            val byteArray = stream.toByteArray()
-
-            // Captura a mensagem digitada pelo usuário (ex: "My home :)")
-            val userMessage = messageEditText.text.toString()
-
-            val id = memoryDbHelper.insertMemory(byteArray, currentLatitude!!, currentLongitude!!, userMessage)
-
-            if (id != -1L) {
-                Toast.makeText(
-                    this,
-                    "Memory saved to database!\nGPS: ($currentLatitude, $currentLongitude)",
-                    Toast.LENGTH_LONG
-                ).show()
-                val intent = Intent(this, MainActivity::class.java)
-                startActivity(intent)
-                finish()
-            } else {
-                Toast.makeText(this, "Failed to save memory.", Toast.LENGTH_SHORT).show()
-            }
-        } else {
-            Toast.makeText(this, "Missing data. Ensure you have a location, a selfie and a message.", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-
-
-    // Tratamento do resultado da solicitação de permissões
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
@@ -244,10 +308,9 @@ class CreateMemoryActivity : AppCompatActivity() {
             if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 initializeMap()
             } else {
-                Toast.makeText(this, "Location permission is required", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this,
+                    "Location permission is required", Toast.LENGTH_SHORT).show()
             }
         }
     }
 }
-
-
