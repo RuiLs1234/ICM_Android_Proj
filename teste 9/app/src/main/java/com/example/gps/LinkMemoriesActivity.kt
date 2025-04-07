@@ -38,7 +38,9 @@ class LinkMemoriesActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setupUI()
         initializeMap()
-        loadAllMemoriesFromFirestore()
+
+        // Carregar 4 memórias aleatórias
+        loadRandomMemoriesFromFirestore()
     }
 
     private fun setupUI() {
@@ -73,7 +75,7 @@ class LinkMemoriesActivity : AppCompatActivity() {
         mapView = MapView(this, MapInitOptions(
             context = this@LinkMemoriesActivity,
             resourceOptions = ResourceOptions.Builder()
-                .accessToken("sk.eyJ1IjoicnVpdWEiLCJhIjoiY200bXM4czU5MDBwZDJrcjJsZW9qNzVjOCJ9.TlDHWxGJe7rdI03udVud3w")
+                .accessToken("YOUR_MAPBOX_ACCESS_TOKEN")
                 .build()
         ))
         mapContainer.addView(mapView)
@@ -119,26 +121,28 @@ class LinkMemoriesActivity : AppCompatActivity() {
         }
     }
 
-    private fun loadAllMemoriesFromFirestore() {
+    private fun loadRandomMemoriesFromFirestore() {
         db.collection("memories")
             .orderBy("timestamp", com.google.firebase.firestore.Query.Direction.DESCENDING)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    Toast.makeText(this, "Error loading memories", Toast.LENGTH_SHORT).show()
-                    return@addSnapshotListener
-                }
-
-                memoryList = snapshot?.documents?.mapNotNull { doc ->
+            .get()
+            .addOnSuccessListener { snapshot ->
+                val allMemories = snapshot.documents.mapNotNull { doc ->
                     doc.toObject(Memory::class.java)?.apply {
                         id = doc.id
                     }
-                }?.toMutableList() ?: mutableListOf()
+                }
+
+                // Embaralha as memórias e pega as 4 primeiras
+                memoryList = allMemories.shuffled().take(4).toMutableList()
 
                 (listView.adapter as? MemoryAdapter)?.apply {
                     clear()
                     addAll(memoryList)
                     notifyDataSetChanged()
                 }
+            }
+            .addOnFailureListener { e ->
+                Toast.makeText(this, "Error loading memories: ${e.message}", Toast.LENGTH_SHORT).show()
             }
     }
 
