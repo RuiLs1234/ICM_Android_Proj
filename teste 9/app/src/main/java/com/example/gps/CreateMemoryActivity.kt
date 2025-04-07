@@ -39,7 +39,7 @@ class CreateMemoryActivity : AppCompatActivity() {
 
     // Firebase e Imgur
     private val db = FirebaseFirestore.getInstance()
-    private val IMGUR_CLIENT_ID = "89528b049eb7c05"
+    private val imgurId = "89528b049eb7c05"
     private val client = OkHttpClient()
 
     private var currentPhoto: Bitmap? = null
@@ -179,8 +179,8 @@ class CreateMemoryActivity : AppCompatActivity() {
 
         val request = Request.Builder()
             .url("https://api.imgur.com/3/image")
+            .addHeader("Authorization", "Client-ID $imgurId")  // Header atualizado
             .post(requestBody)
-            .addHeader("Authorization", "Client-ID $IMGUR_CLIENT_ID")
             .build()
 
         client.newCall(request).enqueue(object : Callback {
