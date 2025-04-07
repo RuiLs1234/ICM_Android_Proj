@@ -218,12 +218,14 @@ class CreateMemoryActivity : AppCompatActivity() {
     }
 
     private fun saveMemoryToFirestore(imgurLink: String) {
+        val userEmail = getSharedPreferences("AppPrefs", MODE_PRIVATE).getString("userEmail", null)
         val memoryData = hashMapOf(
             "imgurLink" to imgurLink,
             "latitude" to currentLatitude,
             "longitude" to currentLongitude,
             "message" to messageEditText.text.toString(),
-            "timestamp" to System.currentTimeMillis()
+            "timestamp" to System.currentTimeMillis(),
+            "userEmail" to userEmail
         )
 
         db.collection("memories")

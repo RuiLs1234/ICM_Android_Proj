@@ -13,6 +13,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import android.content.Context.MODE_PRIVATE
+
 
 class AuthActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -55,7 +57,8 @@ fun AuthForm(isLogin: Boolean, onAuthSuccess: () -> Unit) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
-    val context = LocalContext.current
+    val context = LocalContext.current  // Obtendo o contexto
+
     val dbHelper = remember { MemoryDatabaseHelper(context) }
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -83,6 +86,12 @@ fun AuthForm(isLogin: Boolean, onAuthSuccess: () -> Unit) {
                 if (isLogin) {
                     if (dbHelper.checkUserCredential(email, password)) {
                         dbHelper.updateCurrentUser(email)
+
+                        // Salvar o email nas preferências compartilhadas após o login
+                        context.getSharedPreferences("AppPrefs", MODE_PRIVATE).edit()
+                            .putString("userEmail", email)
+                            .apply()
+
                         onAuthSuccess()
                     } else {
                         Toast.makeText(context, "Invalid credentials", Toast.LENGTH_SHORT).show()
@@ -93,6 +102,12 @@ fun AuthForm(isLogin: Boolean, onAuthSuccess: () -> Unit) {
                         Toast.makeText(context, "Signup failed: User already exists", Toast.LENGTH_SHORT).show()
                     } else {
                         dbHelper.updateCurrentUser(email)
+
+                        // Salvar o email nas preferências compartilhadas após o cadastro
+                        context.getSharedPreferences("AppPrefs", MODE_PRIVATE).edit()
+                            .putString("userEmail", email)
+                            .apply()
+
                         onAuthSuccess()
                     }
                 }
@@ -103,3 +118,4 @@ fun AuthForm(isLogin: Boolean, onAuthSuccess: () -> Unit) {
         }
     }
 }
+

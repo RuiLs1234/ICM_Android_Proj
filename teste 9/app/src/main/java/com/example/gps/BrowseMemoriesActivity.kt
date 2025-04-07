@@ -119,7 +119,10 @@ class BrowseMemoriesActivity : AppCompatActivity() {
     }
 
     private fun loadMemoriesFromFirestore() {
+        val userEmail = getSharedPreferences("AppPrefs", MODE_PRIVATE).getString("userEmail", null)
+
         db.collection("memories")
+            .whereEqualTo("userEmail", userEmail)
             .orderBy("timestamp", com.google.firebase.firestore.Query.Direction.DESCENDING)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
